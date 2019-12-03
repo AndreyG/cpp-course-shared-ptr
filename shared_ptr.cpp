@@ -6,6 +6,7 @@ struct control_block {
     virtual void destroy() = 0;
 
     std::atomic_size_t ref_count { 1 };
+    std::atomic_size_t weak_ref_count { 0 };
 };
 
 template<typename T, typename D>
@@ -37,6 +38,9 @@ struct control_block_inplace final : control_block {
 template<typename T>
 class shared_ptr;
 
+template<typename T>
+class weak_ptr;
+
 template<typename T, typename... Args>
 shared_ptr<T> make_shared(Args &&...);
 
@@ -61,7 +65,8 @@ public:
     ~shared_ptr() {
         if (--cb->ref_count == 0) {
             cb->destroy();
-            delete cb;
+            if (cb->weak_ref_count == 0)
+                delete cb;
         }
     }
 
@@ -73,6 +78,8 @@ public:
     }
 
 private:
+    friend weak_ptr<T>;
+
     template<typename U, typename... Args>
     friend shared_ptr<U> make_shared(Args &&...);
 
@@ -84,6 +91,41 @@ private:
         : ptr(ptr)
         , cb(cb)
     {};
+};
+
+template<typename T>
+class weak_ptr {
+    T* ptr;
+    control_block* cb;
+
+    weak_ptr(T* ptr, control_block* cb)
+        : ptr(ptr)
+        , cb(cb)
+    {
+        ++cb->weak_ref_count;
+    }
+
+public:
+    weak_ptr(shared_ptr<T> const & shared)
+        : weak_ptr(shared.ptr, shared.cb)
+    {}
+
+    weak_ptr(weak_ptr const & other)
+        : weak_ptr(other.ptr, other.cb)
+    {}
+
+    ~weak_ptr() {
+        if (--cb->weak_ref_count == 0 && cb->ref_count == 0)
+            delete cb;
+    }
+
+    shared_ptr<T> lock() {
+        if (cb->ref_count++ == 0) {
+            --cb->ref_count;
+            return nullptr;
+        }
+        return { ptr, cb };
+    }
 };
 
 template<typename T, typename... Args>
