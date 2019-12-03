@@ -48,14 +48,12 @@ class shared_ptr {
 public:
     template<typename D>
     shared_ptr(T* ptr, D deleter)
-        : ptr(ptr)
-        , cb(new control_block_impl<T, D>(ptr, deleter))
+        : shared_ptr(ptr, new control_block_impl<T, D>(ptr, deleter))
     {};
 
     template<typename U>
     shared_ptr(shared_ptr<U> const & other)
-        : ptr(other.ptr)
-        , cb(other.cb)
+        : shared_ptr(other.ptr, other.cb)
     {
         ++cb->ref_count;
     }
@@ -67,12 +65,23 @@ public:
         }
     }
 
+    template<typename U> // reuse other control block
+    shared_ptr(T* ptr, shared_ptr<U> const & other)
+        : shared_ptr(ptr, other.cb)
+    {
+        ++cb->ref_count;
+    }
+
 private:
     template<typename U, typename... Args>
     friend shared_ptr<U> make_shared(Args &&...);
 
     shared_ptr(control_block_inplace<T>* cb)
-        : ptr(cb->get())
+        : shared_ptr(cb->get(), cb)
+    {};
+
+    shared_ptr(T* ptr, control_block* cb)
+        : ptr(ptr)
         , cb(cb)
     {};
 };
