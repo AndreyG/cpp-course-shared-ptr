@@ -1,5 +1,6 @@
 ﻿#include <atomic>
 #include <new>
+#include <type_traits>
 
 struct control_block {
     virtual ~control_block() = default;
@@ -43,6 +44,16 @@ class weak_ptr;
 
 template<typename T, typename... Args>
 shared_ptr<T> make_shared(Args &&...);
+
+template<typename T>
+class enable_shared_from_this {
+    weak_ptr<T> weak_ref;
+
+public:
+    shared_ptr<T> shared_from_this() {
+        return weak_ref.lock();
+    }
+};
 
 template<typename T>
 class shared_ptr {
@@ -90,7 +101,11 @@ private:
     shared_ptr(T* ptr, control_block* cb)
         : ptr(ptr)
         , cb(cb)
-    {};
+    {
+        if constexpr (std::is_convertible_v<T*, enable_shared_from_this<T>*>) {
+            static_cast<enable_shared_from_this<T>*>(ptr)->weak_ref = *this;
+        }
+    };
 };
 
 template<typename T>
